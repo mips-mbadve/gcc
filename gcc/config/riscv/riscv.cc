@@ -10447,6 +10447,47 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
     }
 }
 
+bool
+riscv_emit_shadow_stack_prologue()
+{
+  // check if cf_protection flag is on and if return address is saved
+  if (!need_shadow_stack_push_pop_p())
+    return false;
+
+  // if zicfiss extension is supported, use hardware instructions 
+  if (is_zicfiss_p())
+  {
+    emit_insn (gen_sspush (Pmode, gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)));
+    return true;
+  }
+
+  // otherwise shift to software shadow call stack
+  // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+
+  // simply store the return address to the shadow stack
+  // the shadow stack pointer (ssp) is in x3 (gp)
+  rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
+  rtx t0 = gen_rtx_REG(Pmode, TEMP);
+
+  // To be added into gp
+  rtx constant = GEN_INT (UNITS_PER_WORD);
+
+  // size of the return address
+  rtx offset = GEN_INT (-UNITS_PER_WORD);
+
+  // Get gp - 4|8 memory address
+  rtx addr = gen_rtx_PLUS (Pmode, gp, offset);
+  rtx mem = gen_rtx_MEM (Pmode, addr);
+
+  // addi    gp, gp, [4|8]
+  emit_insn (gen_add3_insn (gp, gp, constant));
+  // s[w|d]  ra, -[4|8](gp)
+  emit_move_insn (mem, ra);
+
+  // I'm sure I'm missing some logic here, to handle debugging maybe
+  return true;
+}
+
 /* Expand the "prologue" pattern.  */
 
 void
@@ -10466,8 +10507,8 @@ riscv_expand_prologue (void)
   if (cfun->machine->naked_p)
     return;
 
-  if (need_shadow_stack_push_pop_p ())
-    emit_insn (gen_sspush (Pmode, gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)));
+  // Delegate the task of emitting instructions for shadow stack to a new function
+  riscv_emit_shadow_stack_prologue();
 
   /* Prefer multi-push to save-restore libcall.  */
   if (riscv_use_multi_push (frame))
@@ -10691,6 +10732,59 @@ riscv_gen_multi_pop_insn (bool use_popret, unsigned mask,
   rtx dwarf = riscv_adjust_multi_pop_cfi_epilogue (multipop_size);
   RTX_FRAME_RELATED_P (insn) = 1;
   REG_NOTES (insn) = dwarf;
+}
+
+/* Handle the shadow call stack epilogue expand */
+bool
+riscv_emit_shadow_stack_epilogue(int style)
+{
+  // skip in case of exception handling
+  if (!need_shadow_stack_push_pop_p ()
+      || ((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
+    return false;
+
+  rtx ra = gen_rtx_REG(Pmode, RETURN_ADDR_REGNUM);
+  rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
+
+  // if support for zicfiss available use that
+  if (is_zicfiss_p()) {
+    if (BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
+        && style != SIBCALL_RETURN
+        && !cfun->machine->interrupt_handler_p) {
+      emit_insn (gen_sspopchk (Pmode, t0));
+    } else {
+      emit_insn (gen_sspopchk (Pmode, ra));
+    }
+    return true;
+  }
+
+  // otherwise shift to software shadow call stack
+  // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+  rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
+  rtx constant = GEN_INT (-UNITS_PER_WORD);
+
+  // offset of the return address
+  // redundant variable for symmetry with prologue
+  rtx offset = GEN_INT (-UNITS_PER_WORD);
+
+  // Get gp - 4|8 memory address
+  rtx addr = gen_rtx_PLUS (Pmode, gp, offset);
+  rtx mem = gen_rtx_MEM (Pmode, addr);
+
+  // Load return address from shadow call stack
+  // l[w|d]  ra|t0, -[4|8](gp)
+  if (BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
+        && style != SIBCALL_RETURN
+        && !cfun->machine->interrupt_handler_p)
+    emit_insn (gen_rtx_SET (t0, mem));
+  else
+    emit_insn (gen_rtx_SET (ra, mem));
+
+  // addi    gp, gp, -[4|8]
+  emit_insn (gen_add3_insn (gp, gp, constant));
+
+  // I'm sure I'm missing some logic here, to handle debugging maybe
+  return true;
 }
 
 /* Expand an "epilogue", "sibcall_epilogue", or "eh_return_internal" pattern;
@@ -11006,17 +11100,8 @@ riscv_expand_epilogue (int style)
     emit_insn (gen_add3_insn (stack_pointer_rtx, stack_pointer_rtx,
 			      EH_RETURN_STACKADJ_RTX));
 
-  if (need_shadow_stack_push_pop_p ()
-      && !((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
-    {
-      if (BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
-	  && style != SIBCALL_RETURN
-	  && !cfun->machine->interrupt_handler_p
-	  && !use_multi_pop)
-	emit_insn (gen_sspopchk (Pmode, t0));
-      else
-	emit_insn (gen_sspopchk (Pmode, ra));
-    }
+  // Shadow call stack epilogue
+  riscv_emit_shadow_stack_epilogue(style);
 
   /* Return from interrupt.  */
   if (cfun->machine->interrupt_handler_p)
@@ -12383,8 +12468,8 @@ riscv_override_options_internal (struct gcc_options *opts)
   if (opts->x_flag_cf_protection != CF_NONE)
     {
       if ((opts->x_flag_cf_protection & CF_RETURN) == CF_RETURN
-	  && !TARGET_ZICFISS)
-	error ("%<-fcf-protection%> is not compatible with this target");
+	  && !TARGET_ZICFISS) {}
+	// error ("%<-fcf-protection%> is not compatible with this target");
 
       if ((opts->x_flag_cf_protection & CF_BRANCH) == CF_BRANCH
 	  && !TARGET_ZICFILP)
@@ -15941,9 +16026,12 @@ bool is_zicfilp_p ()
   return false;
 }
 
+/* Check if cfi protection is enabled by command line
+   Zicfiss will be enabled if supported by target otherwise
+   software shadow stack will be enabled */
 bool need_shadow_stack_push_pop_p ()
 {
-  return is_zicfiss_p () && riscv_save_return_addr_reg_p ();
+  return (flag_cf_protection & CF_RETURN) && riscv_save_return_addr_reg_p ();
 }
 
 /* Synthesize OPERANDS[0] = OPERANDS[1] CODE OPERANDS[2].
