@@ -10464,27 +10464,39 @@ riscv_emit_shadow_stack_prologue()
   // otherwise shift to software shadow call stack
   // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
 
-  // simply store the return address to the shadow stack
   // the shadow stack pointer (ssp) is in x3 (gp)
   rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
-  rtx t0 = gen_rtx_REG(Pmode, TEMP);
+  rtx ra = gen_rtx_REG(Pmode, RETURN_ADDR_REGNUM);
+  rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
+  rtx size = GEN_INT (UNITS_PER_WORD);
+  rtx neg_size = GEN_INT (-UNITS_PER_WORD);
+  rtx zero = GEN_INT (0);
 
-  // To be added into gp
-  rtx constant = GEN_INT (UNITS_PER_WORD);
+  // first check if we have enough space in the shadow stack section
+  // checks if the gp (ssp) will go out of bounds if we save the return 
+  // address on the shadow stack
+  // to be given by newlib, currently in my startup code: startup.S
 
-  // size of the return address
-  rtx offset = GEN_INT (-UNITS_PER_WORD);
+  // save the return address first
+  emit_insn (gen_add3_insn (sp, sp, neg_size));
+  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, zero)); 
+  emit_move_insn (sp_mem, ra);
 
-  // Get gp - 4|8 memory address
-  rtx addr = gen_rtx_PLUS (Pmode, gp, offset);
-  rtx mem = gen_rtx_MEM (Pmode, addr);
-
+  // call the function that checks for gp overflow
+  rtx __shadow_stack_overflow_chk = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_overflow_chk");
+  emit_library_call (__shadow_stack_overflow_chk, LCT_NORMAL, VOIDmode);
+  
+  // restore the return address
+  emit_move_insn (ra, sp_mem);
+  emit_insn (gen_add3_insn (sp, sp, size));
+    
   // addi    gp, gp, [4|8]
-  emit_insn (gen_add3_insn (gp, gp, constant));
+  emit_insn (gen_add3_insn (gp, gp, size));
+  // Get gp - 4|8 memory address
+  rtx gp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, gp, neg_size));
   // s[w|d]  ra, -[4|8](gp)
-  emit_move_insn (mem, ra);
+  emit_move_insn (gp_mem, ra);
 
-  // I'm sure I'm missing some logic here, to handle debugging maybe
   return true;
 }
 
@@ -10761,15 +10773,11 @@ riscv_emit_shadow_stack_epilogue(int style)
   // otherwise shift to software shadow call stack
   // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
   rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
-  rtx constant = GEN_INT (-UNITS_PER_WORD);
-
-  // offset of the return address
-  // redundant variable for symmetry with prologue
-  rtx offset = GEN_INT (-UNITS_PER_WORD);
+  // rtx size = GEN_INT (UNITS_PER_WORD);
+  rtx neg_size = GEN_INT (-UNITS_PER_WORD);
 
   // Get gp - 4|8 memory address
-  rtx addr = gen_rtx_PLUS (Pmode, gp, offset);
-  rtx mem = gen_rtx_MEM (Pmode, addr);
+  rtx mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, gp, neg_size));
 
   // Load return address from shadow call stack
   // l[w|d]  ra|t0, -[4|8](gp)
@@ -10781,9 +10789,8 @@ riscv_emit_shadow_stack_epilogue(int style)
     emit_insn (gen_rtx_SET (ra, mem));
 
   // addi    gp, gp, -[4|8]
-  emit_insn (gen_add3_insn (gp, gp, constant));
+  emit_insn (gen_add3_insn (gp, gp, neg_size));
 
-  // I'm sure I'm missing some logic here, to handle debugging maybe
   return true;
 }
 
