@@ -10470,7 +10470,6 @@ riscv_emit_shadow_stack_prologue()
   rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
   rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
-  rtx zero = GEN_INT (0);
 
   // first check if we have enough space in the shadow stack section
   // checks if the gp (ssp) will go out of bounds if we save the return 
@@ -10479,7 +10478,7 @@ riscv_emit_shadow_stack_prologue()
 
   // save the return address first
   emit_insn (gen_add3_insn (sp, sp, neg_size));
-  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, zero)); 
+  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx)); 
   emit_move_insn (sp_mem, ra);
 
   // call the function that checks for gp overflow
@@ -10755,8 +10754,11 @@ riscv_emit_shadow_stack_epilogue(int style)
       || ((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
     return false;
 
-  rtx ra = gen_rtx_REG(Pmode, RETURN_ADDR_REGNUM);
+  rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
+  rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
+  rtx neg_size = GEN_INT (-UNITS_PER_WORD);
+  rtx size = GEN_INT (UNITS_PER_WORD);
 
   // if support for zicfiss available use that
   if (is_zicfiss_p()) {
@@ -10774,10 +10776,32 @@ riscv_emit_shadow_stack_epilogue(int style)
   // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
   rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
   // rtx size = GEN_INT (UNITS_PER_WORD);
-  rtx neg_size = GEN_INT (-UNITS_PER_WORD);
-
   // Get gp - 4|8 memory address
   rtx mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, gp, neg_size));
+
+  // compare between the return address stored on the stack pointer
+  // and shadow stack pointer
+  emit_insn (gen_rtx_SET (t1, mem));
+
+  // at this point, the return address on the stack pointer is already 
+  // restored to either t0 or ra
+  if (style != SIBCALL_RETURN 
+        && !(style == EXCEPTION_RETURN && crtl->calls_eh_return)
+        && !cfun->machine->interrupt_handler_p)
+      emit_insn (gen_rtx_SET (t1, gen_rtx_XOR (Pmode, t0, t1)));
+  else
+      emit_insn (gen_rtx_SET (t1, gen_rtx_XOR (Pmode, ra, t1)));
+
+  rtx_code_label *label = gen_label_rtx ();  
+  emit_jump_insn (gen_rtx_SET (pc_rtx,
+                             gen_rtx_IF_THEN_ELSE (VOIDmode,
+                                                   gen_rtx_EQ (Pmode, t1, const0_rtx),
+                                                   gen_rtx_LABEL_REF (VOIDmode, label),
+                                                   pc_rtx)));
+
+  rtx exit_call = gen_rtx_SYMBOL_REF (Pmode, "exit");
+  emit_library_call (exit_call, LCT_NORETURN, VOIDmode);
+  emit_label (label);
 
   // Load return address from shadow call stack
   // l[w|d]  ra|t0, -[4|8](gp)
