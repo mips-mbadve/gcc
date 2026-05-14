@@ -10752,7 +10752,6 @@ riscv_emit_shadow_stack_epilogue(int style)
   rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
-  rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
   rtx size = GEN_INT (UNITS_PER_WORD);
 
@@ -10793,7 +10792,7 @@ riscv_emit_shadow_stack_epilogue(int style)
   rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx)); 
   emit_move_insn (sp_mem, ra);
 
-  // call the function that checks for gp overflow
+  // call the function that checks the integrity of the return address as a tail call
   rtx __shadow_stack_restore = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
   emit_library_call (__shadow_stack_restore, LCT_NORMAL, VOIDmode);
   
@@ -11118,7 +11117,7 @@ riscv_expand_epilogue (int style)
 			      EH_RETURN_STACKADJ_RTX));
 
   // Shadow call stack epilogue
-  bool ret_required = riscv_emit_shadow_stack_epilogue(style);
+  riscv_emit_shadow_stack_epilogue(style);
 
   /* Return from interrupt.  */
   if (cfun->machine->interrupt_handler_p)
@@ -11145,8 +11144,11 @@ riscv_expand_epilogue (int style)
 	  && !use_multi_pop)
 	emit_jump_insn (gen_simple_return_internal (t0));
       else
-	emit_jump_insn (gen_simple_return_internal (ra));
+        emit_jump_insn (gen_simple_return_internal (ra));
     }
+
+  if (ENABLE_LD_ST_PAIRS && optimize)
+    riscv_load_store_bond_insns ();
 }
 
 /* Implement EPILOGUE_USES.  */
@@ -12485,8 +12487,13 @@ riscv_override_options_internal (struct gcc_options *opts)
   if (opts->x_flag_cf_protection != CF_NONE)
     {
       if ((opts->x_flag_cf_protection & CF_RETURN) == CF_RETURN
-	  && !TARGET_ZICFISS) {}
-	// error ("%<-fcf-protection%> is not compatible with this target");
+	  && !TARGET_ZICFISS) 
+      {
+        if (riscv_mrelax || !fixed_regs[3]) 
+          error("%<-fcf-protection%> software shadow call stack needs explicit '-mno-relax' and '-ffixed-gp'");
+        else
+          warning (OPT_Wattributes, "%<-fcf-protection%> hardware shadow stack is not compatible with this target, switching to software shadow call stack");
+      }
 
       if ((opts->x_flag_cf_protection & CF_BRANCH) == CF_BRANCH
 	  && !TARGET_ZICFILP)
