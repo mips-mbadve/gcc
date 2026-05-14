@@ -10452,7 +10452,7 @@ riscv_emit_shadow_stack_prologue()
 {
   // check if cf_protection flag is on and if return address is saved
   if (!need_shadow_stack_push_pop_p())
-    return false;
+    return true;
 
   // if zicfiss extension is supported, use hardware instructions 
   if (is_zicfiss_p())
@@ -10465,16 +10465,17 @@ riscv_emit_shadow_stack_prologue()
   // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
 
   // the shadow stack pointer (ssp) is in x3 (gp)
-  rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
   rtx ra = gen_rtx_REG(Pmode, RETURN_ADDR_REGNUM);
   rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
+  rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
 
-  // first check if we have enough space in the shadow stack section
-  // checks if the gp (ssp) will go out of bounds if we save the return 
-  // address on the shadow stack
+  // call a helper function that will handle shadow stack prologue operations
+  // for us, including checking for overflow and saving the ra on gp 
   // to be given by newlib, currently in my startup code: startup.S
+  // move ra to t0 so that it can be passed to helper function
+  emit_move_insn (t0, ra);
 
   // save the return address first
   emit_insn (gen_add3_insn (sp, sp, neg_size));
@@ -10482,21 +10483,14 @@ riscv_emit_shadow_stack_prologue()
   emit_move_insn (sp_mem, ra);
 
   // call the function that checks for gp overflow
-  rtx __shadow_stack_overflow_chk = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_overflow_chk");
-  emit_library_call (__shadow_stack_overflow_chk, LCT_NORMAL, VOIDmode);
+  rtx __shadow_stack_save = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
+  emit_library_call (__shadow_stack_save, LCT_NORMAL, VOIDmode);
   
   // restore the return address
   emit_move_insn (ra, sp_mem);
   emit_insn (gen_add3_insn (sp, sp, size));
-    
-  // addi    gp, gp, [4|8]
-  emit_insn (gen_add3_insn (gp, gp, size));
-  // Get gp - 4|8 memory address
-  rtx gp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, gp, neg_size));
-  // s[w|d]  ra, -[4|8](gp)
-  emit_move_insn (gp_mem, ra);
 
-  return true;
+  return false;
 }
 
 /* Expand the "prologue" pattern.  */
@@ -10752,11 +10746,13 @@ riscv_emit_shadow_stack_epilogue(int style)
   // skip in case of exception handling
   if (!need_shadow_stack_push_pop_p ()
       || ((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
-    return false;
+    return true;
 
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
+  rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
+  rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
   rtx size = GEN_INT (UNITS_PER_WORD);
 
@@ -10773,49 +10769,39 @@ riscv_emit_shadow_stack_epilogue(int style)
   }
 
   // otherwise shift to software shadow call stack
-  // reference - llvm-project/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
-  rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
-  // rtx size = GEN_INT (UNITS_PER_WORD);
-  // Get gp - 4|8 memory address
-  rtx mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, gp, neg_size));
-
-  // compare between the return address stored on the stack pointer
-  // and shadow stack pointer
-  emit_insn (gen_rtx_SET (t1, mem));
-
+  // call a helper function __shadow_stack_return that will handle
+  // shadow stack operations for us including checking if address on shadow stack
+  // and normal stack match and restoring the ra from gp
   // at this point, the return address on the stack pointer is already 
   // restored to either t0 or ra
-  if (style != SIBCALL_RETURN 
+
+  // t0 holds the address of __shadow_stack_retore
+  // t1 holds the return address on the stack
+
+  if (style != SIBCALL_RETURN
         && !(style == EXCEPTION_RETURN && crtl->calls_eh_return)
         && !cfun->machine->interrupt_handler_p)
-      emit_insn (gen_rtx_SET (t1, gen_rtx_XOR (Pmode, t0, t1)));
+      emit_move_insn (t1, t0);
   else
-      emit_insn (gen_rtx_SET (t1, gen_rtx_XOR (Pmode, ra, t1)));
+      emit_move_insn (t1, ra);
+    
+  // TODO: Figure out how to convert this regular call to a tail call 
+  // so that the return address doesn't need to be saved in the sp
 
-  rtx_code_label *label = gen_label_rtx ();  
-  emit_jump_insn (gen_rtx_SET (pc_rtx,
-                             gen_rtx_IF_THEN_ELSE (VOIDmode,
-                                                   gen_rtx_EQ (Pmode, t1, const0_rtx),
-                                                   gen_rtx_LABEL_REF (VOIDmode, label),
-                                                   pc_rtx)));
+  // save the return address first
+  emit_insn (gen_add3_insn (sp, sp, neg_size));
+  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx)); 
+  emit_move_insn (sp_mem, ra);
 
-  rtx exit_call = gen_rtx_SYMBOL_REF (Pmode, "exit");
-  emit_library_call (exit_call, LCT_NORETURN, VOIDmode);
-  emit_label (label);
+  // call the function that checks for gp overflow
+  rtx __shadow_stack_restore = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+  emit_library_call (__shadow_stack_restore, LCT_NORMAL, VOIDmode);
+  
+  // restore the return address
+  emit_move_insn (ra, sp_mem);
+  emit_insn (gen_add3_insn (sp, sp, size));
 
-  // Load return address from shadow call stack
-  // l[w|d]  ra|t0, -[4|8](gp)
-  if (BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
-        && style != SIBCALL_RETURN
-        && !cfun->machine->interrupt_handler_p)
-    emit_insn (gen_rtx_SET (t0, mem));
-  else
-    emit_insn (gen_rtx_SET (ra, mem));
-
-  // addi    gp, gp, -[4|8]
-  emit_insn (gen_add3_insn (gp, gp, neg_size));
-
-  return true;
+  return false;
 }
 
 /* Expand an "epilogue", "sibcall_epilogue", or "eh_return_internal" pattern;
@@ -11132,7 +11118,7 @@ riscv_expand_epilogue (int style)
 			      EH_RETURN_STACKADJ_RTX));
 
   // Shadow call stack epilogue
-  riscv_emit_shadow_stack_epilogue(style);
+  bool ret_required = riscv_emit_shadow_stack_epilogue(style);
 
   /* Return from interrupt.  */
   if (cfun->machine->interrupt_handler_p)
