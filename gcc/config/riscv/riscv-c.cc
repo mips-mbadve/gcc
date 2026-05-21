@@ -152,8 +152,13 @@ riscv_cpu_cpp_builtins (cpp_reader *pfile)
   /* Define architecture extension test macros.  */
   builtin_define_with_int_value ("__riscv_arch_test", 1);
 
-  if (TARGET_ZICFISS && ((flag_cf_protection & CF_RETURN) == CF_RETURN))
-    builtin_define ("__riscv_shadow_stack");
+  if ((flag_cf_protection & CF_RETURN) == CF_RETURN)
+  {
+    if (TARGET_ZICFISS)
+      builtin_define ("__riscv_shadow_stack");
+    else
+      builtin_define ("_riscv_software_shadow_stack");
+  } 
 
   if (TARGET_ZICFILP && ((flag_cf_protection & CF_BRANCH) == CF_BRANCH))
     {

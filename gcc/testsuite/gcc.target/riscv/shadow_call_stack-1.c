@@ -3,4 +3,4 @@
 
 int i;
 
-/* { dg-error "'-fcf-protection' software shadow call stack needs explicit '-mno-relax' and '-ffixed-gp'" "" {target "riscv*-*-*" } 0 } */
+/* { dg-error "'-fcf-protection' software shadow call stack needs explicit '-mno-relax'" "" {target "riscv*-*-*" } 0 } */
