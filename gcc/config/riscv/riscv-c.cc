@@ -157,7 +157,7 @@ riscv_cpu_cpp_builtins (cpp_reader *pfile)
     if (TARGET_ZICFISS)
       builtin_define ("__riscv_shadow_stack");
     else
-      builtin_define ("_riscv_software_shadow_stack");
+      builtin_define ("__riscv_software_shadow_stack");
   } 
 
   if (TARGET_ZICFILP && ((flag_cf_protection & CF_BRANCH) == CF_BRANCH))
