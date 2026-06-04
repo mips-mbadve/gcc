@@ -12281,6 +12281,22 @@ the hook might return true if the prologue and epilogue need to switch
 between instruction sets.
 @end deftypefn
 
+@deftypefn {Target Hook} bool TARGET_HAVE_SIBCALL_SHADOW_STACK_EPILOGUE (rtx_insn *@var{insn})
+This hook returns the SYMBOL_REF rtx to __shadow_stack_restore 
+if the software shadow call stack has been implemented in the target
+and the style of emitting the shadow stack epilogue is to tail call a
+a library function which handles the shadow call stack instructions.
+Otherwise it returns a NULL_RTX
+
+The default implementation just returns a NULL_RTX which is correct for most
+targets. The hook should only return a valid RTX if it has RISC-V style software
+shadow call stack implementation. In AArch64, the shadow call stack prologue
+does not check for shadow stack overflow and the epilogue does not check
+the integrity of the return address, hence they can be inlined. The tail call
+is only required to reduce code size in case of integrity check. The inline
+RISC-V implementation is also available, in which case it will also return NULL_RTX
+@end deftypefn
+
 @deftypefn {Target Hook} void TARGET_EMIT_EPILOGUE_FOR_SIBCALL (rtx_call_insn *@var{call})
 If defined, this hook emits an epilogue sequence for sibling (tail)
 call instruction @var{call}.  Another way of providing epilogues

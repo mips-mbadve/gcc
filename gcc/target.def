@@ -4408,6 +4408,25 @@ between instruction sets.",
  hook_bool_void_false)
 
 DEFHOOK
+(have_sibcall_shadow_stack_epilogue,
+ "This hook returns the SYMBOL_REF rtx to __shadow_stack_restore \n\
+if the software shadow call stack has been implemented in the target\n\
+and the style of emitting the shadow stack epilogue is to tail call a\n\
+a library function which handles the shadow call stack instructions.\n\
+Otherwise it returns a NULL_RTX\n\
+\n\
+The default implementation just returns a NULL_RTX which is correct for most\n\
+targets. The hook should only return a valid RTX if it has RISC-V style software\n\
+shadow call stack implementation. In AArch64, the shadow call stack prologue\n\
+does not check for shadow stack overflow and the epilogue does not check\n\
+the integrity of the return address, hence they can be inlined. The tail call\n\
+is only required to reduce code size in case of integrity check. The inline\n\
+RISC-V implementation is also available, in which case it will also return NULL_RTX",
+ bool, (rtx_insn *insn), 
+ hook_bool_rtx_insn_false 
+)
+
+DEFHOOK
 (emit_epilogue_for_sibcall,
  "If defined, this hook emits an epilogue sequence for sibling (tail)\n\
 call instruction @var{call}.  Another way of providing epilogues\n\
