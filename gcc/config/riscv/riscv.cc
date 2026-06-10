@@ -10600,7 +10600,7 @@ riscv_expand_prologue (void)
     return;
 
   // Delegate the task of emitting instructions for shadow stack to a new function
-  riscv_emit_shadow_stack_prologue(/* inline = (for the moment) */ false);
+  riscv_emit_shadow_stack_prologue (/* inline = (for the moment) */ false);
 
   /* Prefer multi-push to save-restore libcall.  */
   if (riscv_use_multi_push (frame))
@@ -12234,6 +12234,9 @@ riscv_emit_attribute ()
 
   fprintf (asm_out_file, "\t.attribute stack_align, %d\n",
            riscv_stack_boundary / 8);
+
+  if (need_shadow_stack_push_pop_p() && !is_zicfiss_p())
+    fprintf (asm_out_file, "\t.attribute software_shadow_stack, 1\n");
 }
 
 /* Output .variant_cc for function symbol which follows vector calling
