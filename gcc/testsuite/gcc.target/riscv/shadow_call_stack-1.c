@@ -1,6 +1,6 @@
-/* { dg-do compile } */
-/* { dg-options "-fcf-protection=return -fno-exceptions" } */
+/* { dg-do compile { target { riscv*-*-* } } } */
+/* { dg-options "-fsanitize=shadow-call-stack -fno-exceptions" } */
 
 int i;
 
-/* { dg-error "'-fcf-protection' software shadow call stack needs explicit '-mno-relax'" "" {target "riscv*-*-*" } 0 } */
+/* { dg-error "'-fsanitize=shadow-call-stack' software shadow call stack needs explicit '-mno-relax'" "" { target "riscv*-*-*" } 0 } */
