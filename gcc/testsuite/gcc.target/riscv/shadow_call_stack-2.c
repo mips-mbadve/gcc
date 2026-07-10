@@ -1,5 +1,5 @@
 /* { dg-do compile } */
-/* { dg-options "-fcf-protection=return -fno-omit-frame-pointer -mno-relax" } */
+/* { dg-options "-fsanitize=shadow-call-stack -fno-omit-frame-pointer -mno-relax -Os" } */
 /* { dg-warning "hardware shadow stack is not compatible with this target" "" { target *-*-* } 0 } */
 
 /* need to pass __attribute__((noinline)) to prevent the compiler

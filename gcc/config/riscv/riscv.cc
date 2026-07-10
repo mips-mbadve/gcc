@@ -9847,6 +9847,8 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 	    }
 	}
 
+      /* if shadow stack is enabled we restore the return address to t1 
+         instead of ra */
       if (need_shadow_stack_push_pop_p () && epilogue && !sibcall_p
 	  && !(maybe_eh_return && crtl->calls_eh_return)
 	  && (regno == RETURN_ADDR_REGNUM)
@@ -10450,7 +10452,6 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
 bool
 riscv_emit_shadow_stack_prologue(bool _inline)
 {
-  // check if cf_protection flag is on and if return address is saved
   if (!need_shadow_stack_push_pop_p())
     return true;
 
@@ -12181,7 +12182,7 @@ riscv_emit_attribute ()
   fprintf (asm_out_file, "\t.attribute stack_align, %d\n",
            riscv_stack_boundary / 8);
 
-  if (need_shadow_stack_push_pop_p() && !is_zicfiss_p())
+  if (sanitize_shadow_stack_p ())
     fprintf (asm_out_file, "\t.attribute software_shadow_stack, 1\n");
 }
 
@@ -12611,13 +12612,8 @@ riscv_override_options_internal (struct gcc_options *opts)
   if (opts->x_flag_cf_protection != CF_NONE)
     {
       if ((opts->x_flag_cf_protection & CF_RETURN) == CF_RETURN
-	  && !TARGET_ZICFISS) 
-      {
-        if (riscv_mrelax || !fixed_regs[3]) 
-          error("%<-fcf-protection%> software shadow call stack needs explicit '-mno-relax' and '-ffixed-gp'");
-        else
-          warning (OPT_Wattributes, "%<-fcf-protection%> hardware shadow stack is not compatible with this target, switching to software shadow call stack");
-      }
+	  && !TARGET_ZICFISS)
+	error ("%<-fcf-protection%> is not compatible with this target");
 
       if ((opts->x_flag_cf_protection & CF_BRANCH) == CF_BRANCH
 	  && !TARGET_ZICFILP)
@@ -12625,6 +12621,11 @@ riscv_override_options_internal (struct gcc_options *opts)
 
       opts->x_flag_cf_protection
       = (cf_protection_level) (opts->x_flag_cf_protection | CF_SET);
+    }
+
+  if ((opts->x_flag_sanitize & SANITIZE_SHADOW_CALL_STACK) && riscv_mrelax) 
+    {
+      error("%<-fsanitize=shadow-call-stack%> requires explicit '-mno-relax'");
     }
 
   int queue_depth = 0;
@@ -16174,12 +16175,19 @@ bool is_zicfilp_p ()
   return false;
 }
 
+bool sanitize_shadow_stack_p () {
+  if (flag_sanitize & SANITIZE_SHADOW_CALL_STACK)
+    return true;
+
+  return false;
+}
+
 /* Check if cfi protection is enabled by command line
    Zicfiss will be enabled if supported by target otherwise
    software shadow stack will be enabled */
 bool need_shadow_stack_push_pop_p ()
 {
-  return (flag_cf_protection & CF_RETURN) && riscv_save_return_addr_reg_p ();
+  return (is_zicfiss_p () || sanitize_shadow_stack_p ()) && riscv_save_return_addr_reg_p ();
 }
 
 /* Synthesize OPERANDS[0] = OPERANDS[1] CODE OPERANDS[2].

@@ -24,8 +24,7 @@ along with GCC; see the file COPYING3.  If not see
 %{mbig-endian:-EB} \
 %{mlittle-endian:-EL} \
 %{mno-relax:--no-relax} \
-%{fcf-protection=return:-fcf-protection=return} \
-%{fcf-protection=full:-fcf-protection=full} \
+%{fsanitze=shadow-call-stack:fsanitze=shadow-call-stack} \
 %{shared}"
 
 /* Link against Newlib libraries, because the ELF backend assumes Newlib.
