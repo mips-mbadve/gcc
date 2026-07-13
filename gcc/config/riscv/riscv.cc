@@ -10449,6 +10449,20 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
     }
 }
 
+/* Handle the shadow call stack prologue expand
+
+   if hardware shadow call stack is available (zicfiss extension)
+   use sshpush hardware instruction.
+
+   Otherwise shift to software shadow call stack.
+   1) inline instructions (reduced performance overhead)
+   2) function call to a library (reduced code size)
+
+   call to the library function in the prologue does the following:
+   1) save the return address to the shadow stack
+   2) increment the shadow stack pointer
+   3) check for shadow stack buffer overflow */
+
 bool
 riscv_emit_shadow_stack_prologue(bool _inline)
 {
@@ -10777,29 +10791,7 @@ riscv_gen_multi_pop_insn (bool use_popret, unsigned mask,
    emitted by the shadow call stack epilogue */
 rtx __shadow_stack_restore_sym = NULL_RTX;
 
-/* Handle the shadow call stack epilogue expand
-
-   if hardware shadow call stack is available (zicfiss extension)
-   use sshpush and sspopchk hardware instructions.
-
-   Otherwise shift to software shadow call stack.
-   The software shadow call stack can be configured in three ways
-   i) with shadow stack buffer overflow amd stack return address integrity check:
-        1) inline instructions - for exception/interrupt handling
-        2) tail call to a library - for normal function calls
-        (this method saves code size)
-   ii) without shadow stack buffer overflow and stack return address integrity check:
-        TODO: 1) inline instructions 
-        (this method optimizes for performance)
-
-   The implemntation of software shadow call stack in RISC-V is to tail 
-   call a library function in the epilogue which does the following:
-   1) fetch the return address from the shadow stack
-   2) decrement the shadow stack pointer
-   3) check for integrity of return address from stack */
-
-/* Returns the SYMBOL_REF to the library function 
-   if we're using the tail call scheme */
+/* Returns true if using tail call to a library function for shadow stak epilogue */
 bool
 riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn) {
     if (!need_shadow_stack_push_pop_p ())
@@ -10818,7 +10810,21 @@ riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn) {
 
     return false;
 }
- 
+
+/* Handle the shadow call stack epilogue expand
+
+   if hardware shadow call stack is available (zicfiss extension)
+   use sshpush and sspopchk hardware instructions.
+
+   Otherwise shift to software shadow call stack.
+   1) inline instructions (reduced performance overhead)
+   2) tail call to a library (reduced code size)
+
+   The tail call a library function in the epilogue which does the following:
+   1) fetch the return address from the shadow stack
+   2) decrement the shadow stack pointer
+   3) check for integrity of return address from stack */
+
 bool
 riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 {
@@ -11269,8 +11275,6 @@ riscv_expand_epilogue (int style)
   else 
       riscv_emit_shadow_stack_epilogue(style, /* inline = */ false);
 
-  if (ENABLE_LD_ST_PAIRS && optimize)
-    riscv_load_store_bond_insns ();
 }
 
 /* Implement EPILOGUE_USES.  */
