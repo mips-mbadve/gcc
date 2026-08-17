@@ -9847,7 +9847,7 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 	    }
 	}
 
-      /* if shadow stack is enabled we restore the return address to t1 
+      /* if shadow stack is enabled we restore the return address to t1
          instead of ra */
       if (need_shadow_stack_push_pop_p () && epilogue && !sibcall_p
 	  && !(maybe_eh_return && crtl->calls_eh_return)
@@ -10469,7 +10469,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
   if (!need_shadow_stack_push_pop_p())
     return true;
 
-  // if zicfiss extension is supported, use hardware instructions 
+  // if zicfiss extension is supported, use hardware instructions
   if (is_zicfiss_p())
   {
     emit_insn (gen_sspush (Pmode, gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)));
@@ -10488,7 +10488,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
   rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
 
-  if (_inline) 
+  if (_inline)
     {
       // simply store the return address to the shadow stack
       // addi    gp, gp, [4|8]
@@ -10506,7 +10506,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
 
       rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
       emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
-      
+
       emit_label(label);
 
       // Get gp - 4|8 memory address
@@ -10514,25 +10514,25 @@ riscv_emit_shadow_stack_prologue(bool _inline)
       rtx mem = gen_rtx_MEM (Pmode, addr);
 
       // s[w|d]  ra, -[4|8](gp)
-      emit_move_insn (mem, ra);      
+      emit_move_insn (mem, ra);
     }
-  else 
+  else
     {
       // call a helper function that will handle shadow stack prologue operations
-      // for us, including checking for overflow and saving the ra on gp 
+      // for us, including checking for overflow and saving the ra on gp
       // to be given by newlib, currently in my startup code: startup.S
       // move ra to t0 so that it can be passed to helper function
       emit_move_insn (t0, ra);
 
       // save the return address first
       emit_insn (gen_add3_insn (sp, sp, neg_size));
-      rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx)); 
+      rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx));
       emit_move_insn (sp_mem, ra);
 
       // call the function that checks for gp overflow
       rtx __shadow_stack_save = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
       emit_library_call (__shadow_stack_save, LCT_NORMAL, VOIDmode);
-      
+
       // restore the return address
       emit_move_insn (ra, sp_mem);
       emit_insn (gen_add3_insn (sp, sp, size));
@@ -10787,7 +10787,7 @@ riscv_gen_multi_pop_insn (bool use_popret, unsigned mask,
   REG_NOTES (insn) = dwarf;
 }
 
-/* SYMBOL_REF for the library call to a helper function 
+/* SYMBOL_REF for the library call to a helper function
    emitted by the shadow call stack epilogue */
 rtx __shadow_stack_restore_sym = NULL_RTX;
 
@@ -10795,16 +10795,16 @@ rtx __shadow_stack_restore_sym = NULL_RTX;
 bool
 riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn) {
     if (!need_shadow_stack_push_pop_p ())
-        return false; 
+        return false;
 
-    if (is_zicfiss_p ()) 
+    if (is_zicfiss_p ())
         return false;
 
     rtx call = get_call_rtx_from (insn);
 
     if (call) {
-        rtx function = XEXP (XEXP (call, 0), 0); 
-        if (rtx_equal_p (function, __shadow_stack_restore_sym)) 
+        rtx function = XEXP (XEXP (call, 0), 0);
+        if (rtx_equal_p (function, __shadow_stack_restore_sym))
             return true;
     }
 
@@ -10856,14 +10856,14 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   }
 
   // otherwise shift to software shadow call stack
-  // at this point, the return address on the stack pointer is already 
+  // at this point, the return address on the stack pointer is already
   // restored to either t0 or ra
 
   // HACK: Calling convention needs to be checked
   // t0 holds the address of __shadow_stack_retore
   // t1 holds the return address on the stack
 
-  if (_inline) 
+  if (_inline)
   {
     // addi    gp, gp, [4|8]
     emit_insn (gen_add3_insn (gp, gp, size));
@@ -10876,12 +10876,12 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     // s[w|d]  t1, -[4|8](gp)
     emit_move_insn (mem, t1);
 
-    if (return_address_in_t0) 
+    if (return_address_in_t0)
         emit_insn (gen_rtx_SET (t0, gen_rtx_XOR (Pmode, t0, t1)));
     else
         emit_insn (gen_rtx_SET (t0, gen_rtx_XOR (Pmode, ra, t1)));
 
-    // jump to this level if ra matches with stack 
+    // jump to this level if ra matches with stack
     rtx_code_label *label = gen_label_rtx ();
 
     rtx comparison = gen_rtx_EQ (Pmode, t0, CONST0_RTX (Pmode));
@@ -10893,7 +10893,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
     rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
     emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
-    
+
     emit_label(label);
     emit_insn (gen_rtx_SET (ra, t1));
 
@@ -10902,7 +10902,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
   // Move the return address from the regular stack to a temporary register
   emit_move_insn (t1, return_address_in_t0 ? t0 : ra);
-  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, neg_size)); 
+  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, neg_size));
 
   emit_move_insn (sp_mem, return_address_in_t0 ? t0 : ra);
 
@@ -10911,10 +10911,10 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
 
   rtx target_addr = gen_rtx_MEM (FUNCTION_MODE, __shadow_stack_restore_sym);
-  rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode); 
+  rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode);
 
   // The calling convention doesn't matter for now because it is a handwritten assembly function
-  // HACK: modify the callee_cc after the function __shadow_stack_restore is included in a library 
+  // HACK: modify the callee_cc after the function __shadow_stack_restore is included in a library
   rtx_insn *insn = emit_call_insn (gen_sibcall (target_addr, const0_rtx, callee_cc));
   SIBLING_CALL_P (insn) = 1;
 
@@ -11260,7 +11260,7 @@ riscv_expand_epilogue (int style)
     {
       bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ false);
 
-      if (ret_required) 
+      if (ret_required)
       {
         if (need_shadow_stack_push_pop_p ()
     	  && !((style == EXCEPTION_RETURN) && crtl->calls_eh_return)
@@ -11272,7 +11272,7 @@ riscv_expand_epilogue (int style)
             emit_jump_insn (gen_simple_return_internal (ra));
       }
     }
-  else 
+  else
       riscv_emit_shadow_stack_epilogue(style, /* inline = */ false);
 
 }
@@ -12627,7 +12627,7 @@ riscv_override_options_internal (struct gcc_options *opts)
       = (cf_protection_level) (opts->x_flag_cf_protection | CF_SET);
     }
 
-  if ((opts->x_flag_sanitize & SANITIZE_SHADOW_CALL_STACK) && riscv_mrelax) 
+  if ((opts->x_flag_sanitize & SANITIZE_SHADOW_CALL_STACK) && riscv_mrelax)
     {
       error("%<-fsanitize=shadow-call-stack%> requires explicit '-mno-relax'");
     }
@@ -17197,6 +17197,9 @@ riscv_memtag_tag_bitsize ()
 #undef TARGET_HAVE_SIBCALL_SHADOW_STACK_EPILOGUE
 #define TARGET_HAVE_SIBCALL_SHADOW_STACK_EPILOGUE \
   riscv_have_sibcall_shadow_stack_epilogue
+
+#undef TARGET_HAVE_SHADOW_CALL_STACK
+#define TARGET_HAVE_SHADOW_CALL_STACK true
 
 #undef TARGET_SHRINK_WRAP_EMIT_EPILOGUE_COMPONENTS
 #define TARGET_SHRINK_WRAP_EMIT_EPILOGUE_COMPONENTS \
