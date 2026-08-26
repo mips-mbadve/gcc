@@ -6177,10 +6177,10 @@ thread_prologue_and_epilogue_insns (void)
 	     be fallthru.  */
 	  FOR_EACH_EDGE (e, ei, EXIT_BLOCK_PTR_FOR_FN (cfun)->preds)
 	    {
-            /* Find fallthru edges that may have been converted to SIBCALL in 
-               the shadow call stack epilogue 
-   
-               If shadow call stack is enabled on the target (RISC-V for now), 
+            /* Find fallthru edges that may have been converted to SIBCALL in
+               the shadow call stack epilogue
+
+               If shadow call stack is enabled on the target (RISC-V for now),
                the epilogue will generate a SIBCALL to a helper function.
                This breaks the CFG structure. The edge to the EXIT_BLOCK from this basic
                block has already been marked as EDGE_FALLTHRU for a normal return.
@@ -6190,7 +6190,7 @@ thread_prologue_and_epilogue_insns (void)
 
               rtx_insn *last = BB_END (e->src);
 	      if ((CALL_P (last) && SIBLING_CALL_P (last))
-                  && targetm.have_sibcall_shadow_stack_epilogue (last)) 
+                  && targetm.have_sibcall_shadow_stack_epilogue (last))
                 {
                   e->flags = (EDGE_SIBCALL | EDGE_ABNORMAL);
                   continue;
@@ -6202,7 +6202,7 @@ thread_prologue_and_epilogue_insns (void)
 	    }
 
 	  find_sub_basic_blocks (BLOCK_FOR_INSN (epilogue_seq));
-	} 
+	}
       else if (next_active_insn (BB_END (exit_fallthru_edge->src)))
 	{
 	  /* We have a fall-through edge to the exit block, the source is not
@@ -6282,9 +6282,9 @@ thread_prologue_and_epilogue_insns (void)
 
       rtx_insn *insn = BB_END (e->src);
 
-      /* The software shadow stack (currently in RISCV-V) causes an 
+      /* The software shadow stack (currently in RISCV-V) causes an
          sibcall to be added in the epilogue of the function
-         don't emit a epilogue for that */
+         check if this is the same sibcall and if it is, don't emit an additional epilogue for that */
       if (!(CALL_P (insn) && SIBLING_CALL_P (insn)) || targetm.have_sibcall_shadow_stack_epilogue (insn))
 	continue;
 
