@@ -10553,15 +10553,17 @@ riscv_emit_shadow_stack_prologue(bool _inline)
 
       rtx_code_label *label = gen_label_rtx ();
       rtx comparison = gen_rtx_LEU (Pmode, gp, t1);
-      emit_jump_insn (gen_rtx_SET (pc_rtx,
+      rtx_insn *jump = emit_jump_insn (gen_rtx_SET (pc_rtx,
                                 gen_rtx_IF_THEN_ELSE (Pmode, comparison,
                                                     gen_rtx_LABEL_REF (Pmode, label),
                                                    pc_rtx)));
+      JUMP_LABEL (jump) = label;
 
       rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
       emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
 
       emit_label(label);
+      LABEL_NUSES (label) = 1;
 
       // Get gp - 4|8 memory address
       rtx addr = gen_rtx_PLUS (Pmode, gp, size);
@@ -10615,7 +10617,7 @@ riscv_expand_prologue (void)
     return;
 
   // Delegate the task of emitting instructions for shadow stack to a new function
-  riscv_emit_shadow_stack_prologue (/* inline = (for the moment) */ false);
+  riscv_emit_shadow_stack_prologue (/* inline = (for the moment) */ true);
 
   /* Prefer multi-push to save-restore libcall.  */
   if (riscv_use_multi_push (frame))
@@ -10937,13 +10939,16 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
     // jump to this level if ra matches with stack
     rtx_code_label *label = gen_label_rtx ();
+    LABEL_NUSES(label) = 1;
 
     rtx comparison = gen_rtx_EQ (Pmode, t0, CONST0_RTX (Pmode));
-    emit_jump_insn (gen_rtx_SET (pc_rtx,
+    rtx_insn *jump = emit_jump_insn (gen_rtx_SET (pc_rtx,
                                 gen_rtx_IF_THEN_ELSE (Pmode,
                                                       comparison,
                                                       gen_rtx_LABEL_REF (Pmode, label),
                                                       pc_rtx)));
+
+    JUMP_LABEL (jump) = label;
 
     rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
     emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
@@ -10973,7 +10978,6 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   SIBLING_CALL_P (insn) = 1;
 
   // The basic block should end here
-//   emit_barrier();
 
   return false;
 
@@ -11312,7 +11316,7 @@ riscv_expand_epilogue (int style)
     }
   else if (style != SIBCALL_RETURN)
     {
-      bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ false);
+      bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ true);
 
       if (ret_required)
       {
@@ -11327,7 +11331,7 @@ riscv_expand_epilogue (int style)
       }
     }
   else
-      riscv_emit_shadow_stack_epilogue(style, /* inline = */ false);
+      riscv_emit_shadow_stack_epilogue(style, /* inline = */ true);
 
 }
 
