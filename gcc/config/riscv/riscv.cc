@@ -10617,7 +10617,7 @@ riscv_expand_prologue (void)
     return;
 
   // Delegate the task of emitting instructions for shadow stack to a new function
-  riscv_emit_shadow_stack_prologue (/* inline = (for the moment) */ true);
+  riscv_emit_shadow_stack_prologue (/* inline = */ !optimize_size);
 
   /* Prefer multi-push to save-restore libcall.  */
   if (riscv_use_multi_push (frame))
@@ -11316,7 +11316,7 @@ riscv_expand_epilogue (int style)
     }
   else if (style != SIBCALL_RETURN)
     {
-      bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ true);
+      bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ !optimize_size);
 
       if (ret_required)
       {
@@ -11331,7 +11331,7 @@ riscv_expand_epilogue (int style)
       }
     }
   else
-      riscv_emit_shadow_stack_epilogue(style, /* inline = */ true);
+      riscv_emit_shadow_stack_epilogue(style, /* inline = */ !optimize_size);
 
 }
 
