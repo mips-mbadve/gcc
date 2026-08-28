@@ -11293,6 +11293,9 @@ riscv_epilogue_uses (unsigned int regno)
   if (regno == RETURN_ADDR_REGNUM)
     return true;
 
+  if (regno == GP_REGNUM && need_shadow_stack_push_pop_p())
+    return true;
+
   if (epilogue_completed && cfun->machine->interrupt_handler_p)
     {
       /* An interrupt function restores temp regs, so we must indicate that
