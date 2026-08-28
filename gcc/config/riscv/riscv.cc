@@ -10512,7 +10512,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
       LABEL_NUSES (label) = 1;
 
       // Get gp - 4|8 memory address
-      rtx addr = gen_rtx_PLUS (Pmode, gp, size);
+      rtx addr = gen_rtx_PLUS (Pmode, gp, neg_size);
       rtx mem = gen_rtx_MEM (Pmode, addr);
 
       // s[w|d]  ra, -[4|8](gp)
@@ -10867,16 +10867,13 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
   if (_inline)
   {
-    // addi    gp, gp, [4|8]
-    emit_insn (gen_add3_insn (gp, gp, size));
-
     // Get gp - 4|8 memory address
     rtx addr = gen_rtx_PLUS (Pmode, gp, neg_size);
     rtx mem = gen_rtx_MEM (Pmode, addr);
 
     // Get the shadow stack return address into a temp register
-    // s[w|d]  t1, -[4|8](gp)
-    emit_move_insn (mem, t1);
+    // l[w|d]  t1, -[4|8](gp)
+    emit_move_insn (t1, mem);
 
     if (return_address_in_t0)
         emit_insn (gen_rtx_SET (t0, gen_rtx_XOR (Pmode, t0, t1)));
@@ -10898,9 +10895,16 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
     rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
     emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
-
     emit_label(label);
-    emit_insn (gen_rtx_SET (ra, t1));
+
+    // addi    gp, gp, -[4|8]
+    emit_insn (gen_add3_insn (gp, gp, neg_size));
+
+    // Get the verified address back into ra/t0
+    if (return_address_in_t0)
+      emit_move_insn (t0, t1);
+    else
+      emit_move_insn (ra, t1);
 
     return true;
   }

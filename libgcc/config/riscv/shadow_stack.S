@@ -23,6 +23,8 @@ a copy of the GCC Runtime Library Exception along with this program;
 see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 <http://www.gnu.org/licenses/>.  */
 
+#include "riscv-asm.h"
+
 #ifdef __SANITIZE_SHADOW_CALL_STACK__
     .text
     .global __shadow_stack_save, __shadow_stack_restore
@@ -30,25 +32,25 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
     .type __shadow_stack_restore, @function
     .attribute software_shadow_stack, 1
 
-__shadow_stack_save:
+FUNC_BEGIN(__shadow_stack_save)
   la      t2, __shadow_stack_top
   addi    t1, gp, 4
   bgtu    t1, t2, __shadow_stack_chk_fail
   addi    gp, gp, 4
   sw      t0, -4(gp)
   ret
-  .size   __shadow_stack_save, .-__shadow_stack_save
+FUNC_END(__shadow_stack_save)
 
-__shadow_stack_restore:
+FUNC_BEGIN(__shadow_stack_restore)
   lw      t0, -4(gp)
   xor     t1, t0, t1
   bne     t1, zero, __shadow_stack_chk_fail
   addi    gp, gp, -4
   jr      t0
-  .size   __shadow_stack_restore, .-__shadow_stack_restore
+FUNC_END(__shadow_stack_restore)
 
-__shadow_stack_chk_fail:
+FUNC_BEGIN(__shadow_stack_chk_fail)
   call exit
-  .size __shadow_stack_chk_fail, .-__shadow_stack_chk_fail
+FUNC_END(__shadow_stack_chk_fail)
 
 #endif /* __SANITIZE_SHADOW_CALL_STACK__ */

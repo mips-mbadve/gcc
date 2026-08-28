@@ -100,7 +100,7 @@ define_builtin_macros_for_compilation_flags (cpp_reader *pfile)
     cpp_define (pfile, "__SANITIZE_THREAD__");
 
   if (flag_sanitize & SANITIZE_SHADOW_CALL_STACK)
-    cpp_define ("__SANITIZE_SHADOW_CALL_STACK__");
+    cpp_define (pfile, "__SANITIZE_SHADOW_CALL_STACK__");
 
 
   if (optimize_size)
