@@ -9847,7 +9847,7 @@ riscv_for_each_saved_reg (poly_int64 sp_offset, riscv_save_restore_fn fn,
 	    }
 	}
 
-      /* if shadow stack is enabled we restore the return address to t1
+      /* if shadow stack is enabled we restore the return address to t0
          instead of ra */
       if (need_shadow_stack_push_pop_p () && epilogue && !sibcall_p
 	  && !(maybe_eh_return && crtl->calls_eh_return)
@@ -10832,7 +10832,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 {
   // skip in case of exception handling
   if (!need_shadow_stack_push_pop_p ()
-      || ((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
+      || (style == EXCEPTION_RETURN) || crtl->calls_eh_return)
     return true;
 
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
@@ -10841,19 +10841,21 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
-  rtx size = GEN_INT (UNITS_PER_WORD);
 
-  bool return_address_in_t0 = BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
+  // if shadow stack is enabled or in case of exception handling
+  // the return address is restored from the normal stack to register t0
+  // otherwise it is restored in ra
+  bool stack_return_address_in_t0 = BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
           && style != SIBCALL_RETURN
           && !cfun->machine->interrupt_handler_p;
 
   // if support for zicfiss available use that
   if (is_zicfiss_p()) {
-    if (return_address_in_t0) {
+    if (stack_return_address_in_t0)
       emit_insn (gen_sspopchk (Pmode, t0));
-    } else {
+    else
       emit_insn (gen_sspopchk (Pmode, ra));
-    }
+
     return true;
   }
 
@@ -10875,7 +10877,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     // l[w|d]  t1, -[4|8](gp)
     emit_move_insn (t1, mem);
 
-    if (return_address_in_t0)
+    if (stack_return_address_in_t0)
         emit_insn (gen_rtx_SET (t0, gen_rtx_XOR (Pmode, t0, t1)));
     else
         emit_insn (gen_rtx_SET (t0, gen_rtx_XOR (Pmode, ra, t1)));
@@ -10901,7 +10903,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     emit_insn (gen_add3_insn (gp, gp, neg_size));
 
     // Get the verified address back into ra/t0
-    if (return_address_in_t0)
+    if (stack_return_address_in_t0)
       emit_move_insn (t0, t1);
     else
       emit_move_insn (ra, t1);
@@ -10910,10 +10912,10 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   }
 
   // Move the return address from the regular stack to a temporary register
-  emit_move_insn (t1, return_address_in_t0 ? t0 : ra);
+  emit_move_insn (t1, stack_return_address_in_t0 ? t0 : ra);
   rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, neg_size));
 
-  emit_move_insn (sp_mem, return_address_in_t0 ? t0 : ra);
+  emit_move_insn (sp_mem, stack_return_address_in_t0 ? t0 : ra);
 
   // call the function that checks the integrity of the return address as a tail call
   if (__shadow_stack_restore_sym == NULL_RTX)
