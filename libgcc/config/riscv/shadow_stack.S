@@ -33,24 +33,23 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
     .attribute software_shadow_stack, 1
 
 FUNC_BEGIN(__shadow_stack_save)
-  la      t2, __shadow_stack_top
-  addi    t1, gp, 4
-  bgtu    t1, t2, __shadow_stack_chk_fail
+  la      t1, __shadow_stack_top
   addi    gp, gp, 4
+  bgtu    gp, t1, __shadow_stack_chk_fail
   sw      t0, -4(gp)
   ret
 FUNC_END(__shadow_stack_save)
 
 FUNC_BEGIN(__shadow_stack_restore)
   lw      t0, -4(gp)
-  xor     t1, t0, t1
-  bne     t1, zero, __shadow_stack_chk_fail
+  xor     ra, t0, ra
+  bne     ra, zero, __shadow_stack_chk_fail
   addi    gp, gp, -4
   jr      t0
 FUNC_END(__shadow_stack_restore)
 
 FUNC_BEGIN(__shadow_stack_chk_fail)
-  call exit
+  call abort
 FUNC_END(__shadow_stack_chk_fail)
 
 #endif /* __SANITIZE_SHADOW_CALL_STACK__ */

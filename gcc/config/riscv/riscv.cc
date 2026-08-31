@@ -10449,6 +10449,10 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
     }
 }
 
+/* SYMBOL_REF for the library call to a helper function
+   emitted by the shadow call stack epilogue */
+rtx __shadow_stack_save_sym = NULL_RTX;
+
 /* Handle the shadow call stack prologue expand
 
    if hardware shadow call stack is available (zicfiss extension)
@@ -10526,14 +10530,19 @@ riscv_emit_shadow_stack_prologue(bool _inline)
       // move ra to t0 so that it can be passed to helper function
       emit_move_insn (t0, ra);
 
+      // force the compiler to mark t0 as used to make sure it doesn't get optimized away
+      emit_insn(gen_rtx_USE(VOIDmode, t0));
+
       // save the return address first
       emit_insn (gen_add3_insn (sp, sp, neg_size));
       rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx));
       emit_move_insn (sp_mem, ra);
 
       // call the function that checks for gp overflow
-      rtx __shadow_stack_save = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
-      emit_library_call (__shadow_stack_save, LCT_NORMAL, VOIDmode);
+      if (__shadow_stack_save_sym == NULL_RTX)
+        __shadow_stack_save_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
+
+      emit_library_call (__shadow_stack_save_sym, LCT_NORMAL, VOIDmode);
 
       // restore the return address
       emit_move_insn (ra, sp_mem);
@@ -10910,29 +10919,28 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
     return true;
   }
+  else
+  {
+    // make sure the return address from the stack is in ra
+    emit_move_insn (ra, stack_return_address_in_t0 ? t0 : ra);
 
-  // Move the return address from the regular stack to a temporary register
-  emit_move_insn (t1, stack_return_address_in_t0 ? t0 : ra);
-  rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, neg_size));
+    // call the function that checks the integrity of the return address as a tail call
+    if (__shadow_stack_restore_sym == NULL_RTX)
+      __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
 
-  emit_move_insn (sp_mem, stack_return_address_in_t0 ? t0 : ra);
+    rtx target_addr = gen_rtx_MEM (FUNCTION_MODE, __shadow_stack_restore_sym);
+    rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode);
 
-  // call the function that checks the integrity of the return address as a tail call
-  if (__shadow_stack_restore_sym == NULL_RTX)
-    __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+    // The calling convention doesn't matter for now because it is a handwritten assembly function
+    // HACK: calling a library function messes up the ABI, we're not storing any of the callee saved registers
+    // before calling the function, we're passing arguments using register t0, instead of a0-a7
+    rtx_insn *insn = emit_call_insn (gen_sibcall (target_addr, const0_rtx, callee_cc));
+    SIBLING_CALL_P (insn) = 1;
 
-  rtx target_addr = gen_rtx_MEM (FUNCTION_MODE, __shadow_stack_restore_sym);
-  rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode);
+    // The basic block should end here
 
-  // The calling convention doesn't matter for now because it is a handwritten assembly function
-  // HACK: modify the callee_cc after the function __shadow_stack_restore is included in a library
-  rtx_insn *insn = emit_call_insn (gen_sibcall (target_addr, const0_rtx, callee_cc));
-  SIBLING_CALL_P (insn) = 1;
-
-  // The basic block should end here
-
-  return false;
-
+    return false;
+  }
 }
 
 /* Expand an "epilogue", "sibcall_epilogue", or "eh_return_internal" pattern;
