@@ -26,11 +26,19 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #include "riscv-asm.h"
 
 #ifdef __SANITIZE_SHADOW_CALL_STACK__
-    .text
-    .global __shadow_stack_save, __shadow_stack_restore
-    .type __shadow_stack_save, @function
-    .type __shadow_stack_restore, @function
-    .attribute software_shadow_stack, 1
+  .weak __shadow_stack_top
+  .weak __shadow_stack_base
+  .section .data
+__shadow_stack_top:
+  .word 0xffffffff
+__shadow_stack_base:
+  .word 0 
+
+  .text
+  .global __shadow_stack_save, __shadow_stack_restore
+  .type __shadow_stack_save, @function
+  .type __shadow_stack_restore, @function
+  .attribute software_shadow_stack, 1
 
 FUNC_BEGIN(__shadow_stack_save)
   la      t1, __shadow_stack_top
