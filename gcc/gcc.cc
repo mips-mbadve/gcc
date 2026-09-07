@@ -1149,6 +1149,8 @@ proper position among the other output files.  */
 	%{static:%ecannot specify -static with -fsanitize=hwaddress}}\
     %{%:sanitize(thread):" LIBTSAN_SPEC "\
     %{static:%ecannot specify -static with -fsanitize=thread}}\
+    %{%:sanitize(shadow-call-stack):-fsanitize=shadow-call-stack \
+        %{!mno-relax:%e-fsanitize=shadow-call-stack requires explicit -mno-relax}}\
     %{%:sanitize(undefined):" LIBUBSAN_SPEC "}\
     %{%:sanitize(leak):" LIBLSAN_SPEC "}}}}"
 #endif
@@ -10702,6 +10704,8 @@ sanitize_spec_function (int argc, const char **argv)
     return (flag_sanitize & SANITIZE_MEMTAG_STACK) ? "" : NULL;
   if (strcmp (argv[0], "thread") == 0)
     return (flag_sanitize & SANITIZE_THREAD) ? "" : NULL;
+  if (strcmp (argv[0], "shadow-call-stack") == 0)
+    return (flag_sanitize & SANITIZE_SHADOW_CALL_STACK) ? "" : NULL;
   if (strcmp (argv[0], "undefined") == 0)
     return ((flag_sanitize
 	     & ~flag_sanitize_trap
