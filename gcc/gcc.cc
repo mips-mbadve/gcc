@@ -1148,9 +1148,8 @@ proper position among the other output files.  */
     %{%:sanitize(hwaddress):" LIBHWASAN_SPEC "\
 	%{static:%ecannot specify -static with -fsanitize=hwaddress}}\
     %{%:sanitize(thread):" LIBTSAN_SPEC "\
-    %{static:%ecannot specify -static with -fsanitize=thread}}\
-    %{%:sanitize(shadow-call-stack):-fsanitize=shadow-call-stack \
-        %{!mno-relax:%e-fsanitize=shadow-call-stack requires explicit -mno-relax}}\
+        %{static:%ecannot specify -static with -fsanitize=thread}}\
+    %{%:sanitize(shadow-call-stack):-fsanitize=shadow-call-stack}\
     %{%:sanitize(undefined):" LIBUBSAN_SPEC "}\
     %{%:sanitize(leak):" LIBLSAN_SPEC "}}}}"
 #endif
