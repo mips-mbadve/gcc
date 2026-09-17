@@ -8323,9 +8323,11 @@ riscv_legitimize_call_address (rtx addr, bool sibcall_p)
   if (!call_insn_operand (addr, VOIDmode))
     {
       rtx reg;
+      rtx __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+      
       if (sibcall_p && can_create_pseudo_p ())
 	reg = gen_reg_rtx (Pmode);
-      else if (sibcall_p)
+      else if (sibcall_p && !rtx_equal_p(addr, __shadow_stack_restore_sym))
 	{
 	  /* MI thunks are expanded as post-reload code and cannot create
 	     pseudos.  STATIC_CHAIN_REGNUM is available as a temporary there
@@ -10449,10 +10451,6 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
     }
 }
 
-/* SYMBOL_REF for the library call to a helper function
-   emitted by the shadow call stack epilogue */
-rtx __shadow_stack_save_sym = NULL_RTX;
-
 /* Handle the shadow call stack prologue expand
 
    if hardware shadow call stack is available (zicfiss extension)
@@ -10510,7 +10508,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
       JUMP_LABEL (jump) = label;
 
       rtx _abort_call = gen_rtx_SYMBOL_REF (Pmode, "abort");
-      emit_library_call (_abort_call, LCT_NORETURN, VOIDmode);
+      emit_library_call (_abort_call, LCT_NORMAL, VOIDmode);
 
       emit_label(label);
       LABEL_NUSES (label) = 1;
@@ -10539,8 +10537,7 @@ riscv_emit_shadow_stack_prologue(bool _inline)
       emit_move_insn (sp_mem, ra);
 
       // call the function that checks for gp overflow
-      if (__shadow_stack_save_sym == NULL_RTX)
-        __shadow_stack_save_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
+      rtx __shadow_stack_save_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
 
       emit_library_call (__shadow_stack_save_sym, LCT_NORMAL, VOIDmode);
 
@@ -10798,28 +10795,26 @@ riscv_gen_multi_pop_insn (bool use_popret, unsigned mask,
   REG_NOTES (insn) = dwarf;
 }
 
-/* SYMBOL_REF for the library call to a helper function
-   emitted by the shadow call stack epilogue */
-rtx __shadow_stack_restore_sym = NULL_RTX;
-
 /* Returns true if using tail call to a library function for shadow stak epilogue */
 bool
-riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn) {
-    if (!need_shadow_stack_push_pop_p ())
-        return false;
+riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn) 
+{
+  if (!need_shadow_stack_push_pop_p ())
+      return false;
 
-    if (is_zicfiss_p ())
-        return false;
+  if (is_zicfiss_p ())
+      return false;
 
-    rtx call = get_call_rtx_from (insn);
+  rtx call = get_call_rtx_from (insn);
 
-    if (call) {
-        rtx function = XEXP (XEXP (call, 0), 0);
-        if (rtx_equal_p (function, __shadow_stack_restore_sym))
-            return true;
-    }
+  if (call) {
+      rtx function = XEXP (XEXP (call, 0), 0);
+      rtx __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+      if (rtx_equal_p (function, __shadow_stack_restore_sym))
+        return true;
+  }
 
-    return false;
+  return false;
 }
 
 /* Handle the shadow call stack epilogue expand
@@ -10925,8 +10920,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     emit_move_insn (ra, stack_return_address_in_t0 ? t0 : ra);
 
     // call the function that checks the integrity of the return address as a tail call
-    if (__shadow_stack_restore_sym == NULL_RTX)
-      __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+    rtx __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
 
     rtx target_addr = gen_rtx_MEM (FUNCTION_MODE, __shadow_stack_restore_sym);
     rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode);
@@ -10938,6 +10932,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     SIBLING_CALL_P (insn) = 1;
 
     // The basic block should end here
+    emit_barrier ();
 
     return false;
   }
@@ -11303,7 +11298,7 @@ riscv_epilogue_uses (unsigned int regno)
   if (regno == RETURN_ADDR_REGNUM)
     return true;
 
-  if (regno == GP_REGNUM && need_shadow_stack_push_pop_p())
+  if (regno == GP_REGNUM && sanitize_shadow_stack_p())
     return true;
 
   if (epilogue_completed && cfun->machine->interrupt_handler_p)
@@ -12650,7 +12645,7 @@ riscv_override_options_internal (struct gcc_options *opts)
 
   if ((opts->x_flag_sanitize & SANITIZE_SHADOW_CALL_STACK) && riscv_mrelax)
     {
-      error("%<-fsanitize=shadow-call-stack%> requires explicit '-mno-relax'");
+      error("%<-fsanitize=shadow-call-stack%> requires explicit '%<-mno-relax%>'");
     }
 
   int queue_depth = 0;

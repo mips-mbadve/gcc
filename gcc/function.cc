@@ -6189,6 +6189,10 @@ thread_prologue_and_epilogue_insns (void)
                enabled, and that the sibcall is actually present in the basic block. */
 
               rtx_insn *last = BB_END (e->src);
+
+              if (BARRIER_P (last))
+                  last = PREV_INSN (last);
+
 	      if ((CALL_P (last) && SIBLING_CALL_P (last))
                   && targetm.have_sibcall_shadow_stack_epilogue (last))
                 {
