@@ -20,7 +20,6 @@ along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
 #define IN_TARGET_CODE 1
-
 #define INCLUDE_STRING
 #define INCLUDE_VECTOR
 #define INCLUDE_ALGORITHM
