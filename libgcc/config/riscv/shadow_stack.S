@@ -28,11 +28,21 @@ see the files COPYING3 and COPYING.RUNTIME respectively.  If not, see
 #ifdef __SANITIZE_SHADOW_CALL_STACK__
   .weak __shadow_stack_top
   .weak __shadow_stack_base
+
   .section .data
 __shadow_stack_top:
+#ifdef __riscv64
+  .dword 0xffffffffffffffff
+#else
   .word 0xffffffff
+#endif
+
 __shadow_stack_base:
-  .word 0 
+#ifdef __riscv64
+  .dword 0x0
+#else
+  .word 0x0
+#endif
 
   .text
   .global __shadow_stack_save, __shadow_stack_restore
@@ -41,18 +51,32 @@ __shadow_stack_base:
   .attribute software_shadow_stack, 1
 
 FUNC_BEGIN(__shadow_stack_save)
+#ifdef __riscv64
+  ld      t1, __shadow_stack_top
+  addi    gp, gp, 8
+  bgtu    gp, t1, __shadow_stack_chk_fail
+  sd      t0, -8(gp)
+#else 
   la      t1, __shadow_stack_top
   addi    gp, gp, 4
   bgtu    gp, t1, __shadow_stack_chk_fail
   sw      t0, -4(gp)
+#endif
   ret
 FUNC_END(__shadow_stack_save)
 
 FUNC_BEGIN(__shadow_stack_restore)
+#ifdef __riscv64
+  ld      t0, -8(gp)
+  xor     ra, t0, ra
+  bne     ra, zero, __shadow_stack_chk_fail
+  addi    gp, gp, -8
+#else
   lw      t0, -4(gp)
   xor     ra, t0, ra
   bne     ra, zero, __shadow_stack_chk_fail
   addi    gp, gp, -4
+#endif
   jr      t0
 FUNC_END(__shadow_stack_restore)
 
