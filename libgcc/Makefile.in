@@ -83,7 +83,7 @@ AR = @AR@
 AR_FLAGS = rc
 
 CC = @CC@
-CFLAGS = @CFLAGS@ @SHADOW_CALL_STACK_FLAGS_FOR_TARGET@
+CFLAGS = @CFLAGS@
 RANLIB = @RANLIB@
 LN_S = @LN_S@
 WERROR = @WERROR@
@@ -307,7 +307,11 @@ CRTSTUFF_CFLAGS = -O2 $(GCC_CFLAGS) $(INCLUDES) $(MULTILIB_CFLAGS) -g0 \
   $(INHIBIT_LIBC_CFLAGS) $(USE_TM_CLONE_REGISTRY)
 
 # Extra flags to use when compiling crt{begin,end}.o.
-CRTSTUFF_T_CFLAGS = @SHADOW_CALL_STACK_FLAGS_FOR_TARGET@
+CRTSTUFF_T_CFLAGS = 
+
+# Forcibly add shadow call stack options
+override CFLAGS +=  @SHADOW_CALL_STACK_FLAGS_FOR_TARGET@
+override CRTSTUFF_T_CFLAGS += @SHADOW_CALL_STACK_FLAGS_FOR_TARGET@
 
 MULTIDIR := $(shell $(CC) $(CFLAGS) -print-multi-directory)
 MULTIOSDIR := $(shell $(CC) $(CFLAGS) -print-multi-os-directory)
