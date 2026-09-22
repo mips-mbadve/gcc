@@ -67,16 +67,17 @@ FUNC_END(__shadow_stack_save)
 
 FUNC_BEGIN(__shadow_stack_restore)
 #ifdef __riscv64
-  ld      t0, -8(gp)
-  xor     ra, t0, ra
-  bne     ra, zero, __shadow_stack_chk_fail
+  ld      t1, -8(gp)
+  xor     t0, t1, t0
+  bne     t0, zero, __shadow_stack_chk_fail
   addi    gp, gp, -8
 #else
-  lw      t0, -4(gp)
-  xor     ra, t0, ra
-  bne     ra, zero, __shadow_stack_chk_fail
+  lw      t1, -4(gp)
+  xor     t0, t1, t0
+  bne     t0, zero, __shadow_stack_chk_fail
   addi    gp, gp, -4
 #endif
+  mv      t0, t1
   jr      t0
 FUNC_END(__shadow_stack_restore)
 
