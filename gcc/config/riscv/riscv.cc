@@ -10917,21 +10917,16 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   else
   {
     // make sure the return address from the stack is in ra
-    emit_move_insn (ra, stack_return_address_in_t0 ? t0 : ra);
+    if (stack_return_address_in_t0)
+      emit_move_insn (ra, t0);
 
-    // call the function that checks the integrity of the return address as a tail call
-    rtx __shadow_stack_restore_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_restore");
+    rtx dwarf = riscv_adjust_libcall_cfi_epilogue();
+    
+    rtx_insn *insn = emit_insn(gen_shadow_stack_restore(const0_rtx));
+    RTX_FRAME_RELATED_P(insn) = 1;
+    REG_NOTES(insn) = dwarf;
 
-    rtx target_addr = gen_rtx_MEM (FUNCTION_MODE, __shadow_stack_restore_sym);
-    rtx callee_cc = gen_int_mode (fndecl_abi (cfun->decl).id(), SImode);
-
-    // The calling convention doesn't matter for now because it is a handwritten assembly function
-    // HACK: calling a library function messes up the ABI, we're not storing any of the callee saved registers
-    // before calling the function, we're passing arguments using register t0, instead of a0-a7
-    rtx_insn *insn = emit_call_insn (gen_sibcall (target_addr, const0_rtx, callee_cc));
-    SIBLING_CALL_P (insn) = 1;
-
-    // The basic block should end here
+    // The basic block should end after a sibcall 
     emit_barrier ();
 
     return false;
