@@ -4447,19 +4447,12 @@
 ;; shadow call stack patterns
 
 (define_insn "shadow_stack_restore"
-  [(unspec_volatile [(match_operand 0 "const_int_operand")] UNSPECV_SHADOW_STACK_RESTORE)
-  (clobber (reg:SI T0_REGNUM))]
+  [(unspec_volatile [(const_int 0)] UNSPECV_SHADOW_STACK_RESTORE)
+  (use (reg:SI T0_REGNUM))
+  (clobber (reg:SI T1_REGNUM))]
   "sanitize_shadow_stack_p()"
   "tail\t__shadow_stack_restore"
   [(set_attr "type" "call")])
-  
-(define_insn "shadow_stack_restore_return"
-  [(return)
-   (use (match_operand 0 "pmode_register_operand" ""))
-   (const_int 0)]
-  "sanitize_shadow_stack_p()"
-  ""
-  [(set_attr "type" "ret")])
 
 (define_insn "riscv_frcsr"
   [(set (match_operand:SI 0 "register_operand" "=r")

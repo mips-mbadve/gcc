@@ -10840,7 +10840,6 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
   rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
-  rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
