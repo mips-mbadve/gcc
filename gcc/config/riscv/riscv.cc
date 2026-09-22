@@ -10914,9 +10914,9 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   }
   else
   {
-    // make sure the return address from the stack is in ra
-    if (stack_return_address_in_t0)
-      emit_move_insn (ra, t0);
+    // make sure the return address from the stack is in t0
+    if (!stack_return_address_in_t0)
+      emit_move_insn (t0, ra);
 
     rtx dwarf = riscv_adjust_libcall_cfi_epilogue();
     
