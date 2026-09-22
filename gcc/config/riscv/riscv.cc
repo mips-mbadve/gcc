@@ -10833,20 +10833,25 @@ riscv_have_sibcall_shadow_stack_epilogue (rtx_insn *insn)
 bool
 riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
 {
+  // skip in case we don't need shadow stack prologue/epilogue
+  if (!need_shadow_stack_push_pop_p ())
+    return true;
+  
   // skip in case of exception handling
-  if (!need_shadow_stack_push_pop_p ()
-      || (style == EXCEPTION_RETURN) || crtl->calls_eh_return)
+  if (style == EXCEPTION_RETURN || crtl->calls_eh_return)
     return true;
 
   rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
-  rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
+  rtx gp = gen_rtx_REG (Pmode, GP_REGNUM);
   rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
 
+  // at this point, the return address on the stack pointer is already
+  // restored to either t0 or ra
   // if shadow stack is enabled or in case of exception handling
   // the return address is restored from the normal stack to register t0
-  // otherwise it is restored in ra
+  // otherwise it is restored in ra (ref. see function riscv_for_each_saved_reg)
   bool stack_return_address_in_t0 = BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
           && style != SIBCALL_RETURN
           && !cfun->machine->interrupt_handler_p;
@@ -10862,12 +10867,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
   }
 
   // otherwise shift to software shadow call stack
-  // at this point, the return address on the stack pointer is already
-  // restored to either t0 or ra
-
-  // HACK: Calling convention needs to be checked
-  // t0 holds the address of __shadow_stack_retore
-  // t1 holds the return address on the stack
+  // ABI: stack return address in t0/ra, shadow stack return address in t1
 
   if (_inline)
   {
@@ -11244,11 +11244,17 @@ riscv_expand_epilogue (int style)
     emit_insn (gen_add3_insn (stack_pointer_rtx, stack_pointer_rtx,
 			      EH_RETURN_STACKADJ_RTX));
 
+  /* In case of interrupt handlers, they require return instructions like mret 
+     and uret in order to change the machine mode, hence we should emit the 
+     shadow stack epilogue inline followed by mret/uret/sret. In all other cases 
+     prefer the library call to __shadow_stack_restore if -Os is passed */
+  bool should_inline_shadow_stack_epilogue = cfun->machine->interrupt_handler_p || !optimize_size;
+  bool ret_required = 
+    riscv_emit_shadow_stack_epilogue(style, /* _inline = */ should_inline_shadow_stack_epilogue);
+
   /* Return from interrupt.  */
   if (cfun->machine->interrupt_handler_p)
     {
-      riscv_emit_shadow_stack_epilogue(style, /* _inline = */ true);
-
       enum riscv_privilege_levels mode = cfun->machine->interrupt_mode;
 
       gcc_assert (mode != UNKNOWN_MODE);
@@ -11264,8 +11270,6 @@ riscv_expand_epilogue (int style)
     }
   else if (style != SIBCALL_RETURN)
     {
-      bool ret_required = riscv_emit_shadow_stack_epilogue(style, /* inline = */ !optimize_size);
-
       if (ret_required)
       {
         if (need_shadow_stack_push_pop_p ()
@@ -11278,8 +11282,6 @@ riscv_expand_epilogue (int style)
             emit_jump_insn (gen_simple_return_internal (ra));
       }
     }
-  else
-      riscv_emit_shadow_stack_epilogue(style, /* inline = */ !optimize_size);
 
 }
 
@@ -16196,8 +16198,8 @@ bool sanitize_shadow_stack_p () {
 }
 
 /* Check if cfi protection is enabled by command line
-   Zicfiss will be enabled if supported by target otherwise
-   software shadow stack will be enabled */
+   returns true is zicfiss or -fsanitize=shadow-call-stack is enabled
+   AND the return address is saved on the stack */
 bool need_shadow_stack_push_pop_p ()
 {
   return (is_zicfiss_p () || sanitize_shadow_stack_p ()) && riscv_save_return_addr_reg_p ();
