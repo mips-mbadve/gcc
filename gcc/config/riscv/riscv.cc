@@ -10483,8 +10483,6 @@ riscv_emit_shadow_stack_prologue(bool _inline)
   // the shadow stack pointer (ssp) is in x3 (gp)
   rtx ra = gen_rtx_REG(Pmode, RETURN_ADDR_REGNUM);
   rtx gp = gen_rtx_REG(Pmode, GP_REGNUM);
-  rtx sp = gen_rtx_REG(Pmode, STACK_POINTER_REGNUM);
-  rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
   rtx t1 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP2_REGNUM);
   rtx size = GEN_INT (UNITS_PER_WORD);
   rtx neg_size = GEN_INT (-UNITS_PER_WORD);
@@ -10523,26 +10521,14 @@ riscv_emit_shadow_stack_prologue(bool _inline)
     {
       // call a helper function that will handle shadow stack prologue operations
       // for us, including checking for overflow and saving the ra on gp
-      // to be given by newlib, currently in my startup code: startup.S
-      // move ra to t0 so that it can be passed to helper function
-      emit_move_insn (t0, ra);
 
-      // force the compiler to mark t0 as used to make sure it doesn't get optimized away
-      emit_insn(gen_rtx_USE(VOIDmode, t0));
-
-      // save the return address first
-      emit_insn (gen_add3_insn (sp, sp, neg_size));
-      rtx sp_mem = gen_rtx_MEM (Pmode, gen_rtx_PLUS (Pmode, sp, const0_rtx));
-      emit_move_insn (sp_mem, ra);
-
-      // call the function that checks for gp overflow
-      rtx __shadow_stack_save_sym = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_save");
-
-      emit_library_call (__shadow_stack_save_sym, LCT_NORMAL, VOIDmode);
-
-      // restore the return address
-      emit_move_insn (ra, sp_mem);
-      emit_insn (gen_add3_insn (sp, sp, size));
+      // emit the pattern for calling the __shadow_stack_save library call
+      // this function is called from the t0 register leaving the ra unharmed
+      rtx dwarf = riscv_adjust_libcall_cfi_prologue();
+      
+      rtx_insn *insn = emit_insn (gen_shadow_stack_save ());
+      RTX_FRAME_RELATED_P(insn) = 1;
+      REG_NOTES(insn) = dwarf;
     }
 
   return false;
@@ -10918,7 +10904,7 @@ riscv_emit_shadow_stack_epilogue(int style, bool _inline = false)
     if (!stack_return_address_in_t0)
       emit_move_insn (t0, ra);
 
-    rtx dwarf = riscv_adjust_libcall_cfi_epilogue();
+    rtx dwarf = riscv_adjust_libcall_cfi_epilogue ();
     
     rtx_insn *insn = emit_insn(gen_shadow_stack_restore(const0_rtx));
     RTX_FRAME_RELATED_P(insn) = 1;

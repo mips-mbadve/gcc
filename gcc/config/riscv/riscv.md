@@ -142,6 +142,7 @@
   
   ;; Shadow Call Stack
   UNSPECV_SHADOW_STACK_RESTORE
+  UNSPECV_SHADOW_STACK_SAVE
 
   ;; ZICFILP
   UNSPECV_LPAD
@@ -4445,6 +4446,15 @@
   [(set_attr "type" "ret")])
 
 ;; shadow call stack patterns
+
+(define_insn "shadow_stack_save"
+  [(unspec_volatile [(const_int 0)] UNSPECV_SHADOW_STACK_SAVE)
+   (use (reg:SI RETURN_ADDR_REGNUM))
+   (use (reg:SI T0_REGNUM))
+   (clobber (reg:SI T1_REGNUM))]
+  "sanitize_shadow_stack_p()"
+  "call\tt0,__shadow_stack_save"
+  [(set_attr "type" "call")])
 
 (define_insn "shadow_stack_restore"
   [(unspec_volatile [(const_int 0)] UNSPECV_SHADOW_STACK_RESTORE)

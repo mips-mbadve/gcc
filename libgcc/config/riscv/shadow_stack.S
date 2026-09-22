@@ -55,14 +55,14 @@ FUNC_BEGIN(__shadow_stack_save)
   ld      t1, __shadow_stack_top
   addi    gp, gp, 8
   bgtu    gp, t1, __shadow_stack_chk_fail
-  sd      t0, -8(gp)
+  sd      ra, -8(gp)
 #else 
   la      t1, __shadow_stack_top
   addi    gp, gp, 4
   bgtu    gp, t1, __shadow_stack_chk_fail
-  sw      t0, -4(gp)
+  sw      ra, -4(gp)
 #endif
-  ret
+  jr      t0
 FUNC_END(__shadow_stack_save)
 
 FUNC_BEGIN(__shadow_stack_restore)
