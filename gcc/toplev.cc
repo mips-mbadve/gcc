@@ -1740,7 +1740,9 @@ process_options ()
       if (!targetm.have_shadow_call_stack)
 	sorry ("%<-fsanitize=shadow-call-stack%> not supported "
 	       "in current platform");
-      else if (flag_exceptions)
+
+      /* Library support for exceptions is available only in RISCV for now */
+      else if (flag_exceptions && !targetm.have_libunwind_support_for_shadow_call_stack)
 	error_at (UNKNOWN_LOCATION, "%<-fsanitize=shadow-call-stack%> "
 		  "requires %<-fno-exceptions%>");
     }
