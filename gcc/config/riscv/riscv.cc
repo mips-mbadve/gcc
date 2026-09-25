@@ -10489,14 +10489,21 @@ riscv_emit_shadow_stack_prologue(bool _inline)
 
   if (_inline)
     {
-      // simply store the return address to the shadow stack
-      // addi    gp, gp, [4|8]
+      // emit all the shadow stack modifications inline in the prologue
+
+      // addi gp, gp, [4|8]
       emit_insn (gen_add3_insn (gp, gp, size));
 
+      // __shadow_stack_top is a symbol provided by the linker script
+      // it gives the last address of the shadow stack in memory
       rtx __shadow_stack_top = gen_rtx_SYMBOL_REF (Pmode, "__shadow_stack_top");
+      
+      // l[d|w] t1, 0(__shadow_stack_top)
       emit_move_insn (t1, __shadow_stack_top);
 
       rtx_code_label *label = gen_label_rtx ();
+
+      // bleu gp, t1, abort (if gp >= __shadow_stack_top, jump to abort)
       rtx comparison = gen_rtx_LEU (Pmode, gp, t1);
       rtx_insn *jump = emit_jump_insn (gen_rtx_SET (pc_rtx,
                                 gen_rtx_IF_THEN_ELSE (Pmode, comparison,
@@ -17197,6 +17204,9 @@ riscv_memtag_tag_bitsize ()
 
 #undef TARGET_HAVE_SHADOW_CALL_STACK
 #define TARGET_HAVE_SHADOW_CALL_STACK true
+
+#undef TARGET_HAVE_LIBUNWIND_SUPPORT_FOR_SHADOW_CALL_STACK
+#define TARGET_HAVE_LIBUNWIND_SUPPORT_FOR_SHADOW_CALL_STACK true
 
 #undef TARGET_SHRINK_WRAP_EMIT_EPILOGUE_COMPONENTS
 #define TARGET_SHRINK_WRAP_EMIT_EPILOGUE_COMPONENTS \

@@ -270,7 +270,7 @@ LIB2FUNCS_EXCLUDE =
 
 # List of extra C and assembler files to add to static and shared libgcc2.
 # Assembler files should have names ending in `.S'.
-LIB2ADD =
+LIB2ADD = 
 
 # List of extra C and assembler files to add to static libgcc2.
 # Assembler files should have names ending in `.S'.

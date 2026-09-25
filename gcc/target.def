@@ -7707,6 +7707,22 @@ DEFHOOKPOD
 @option{-fsanitize=shadow-call-stack}.  The default value is false.",
  bool, false)
 
+/* This value represents whether support in libunwind for shadow call stack
+   is present for the target platform.  */
+DEFHOOKPOD
+(have_libunwind_support_for_shadow_call_stack,
+ "This value is true if the target platform has support for\n\
+@option{-fsanitize=shadow-call-stack} in libunwind.  The default value is false.",
+ bool, false)
+
+/* Return true if hoisting pointer-chasing load is profitable.  */
+DEFHOOK
+(pointer_chasing_load_profitable_p,
+ "This hook returns true if hoisting pointer-chasing load is profitable.\n\
+The default implementation returns @code{false}.",
+bool, (void),
+default_pointer_chasing_load_profitable_p)
+
 /* This value represents whether libatomic is available on
    the target platform.  */
 DEFHOOKPOD
