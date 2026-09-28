@@ -10501,6 +10501,32 @@ riscv_allocate_and_probe_stack_space (rtx temp1, HOST_WIDE_INT size)
     }
 }
 
+/* Handle the shadow call stack prologue expand.  */
+
+void
+riscv_emit_shadow_stack_prologue ()
+{
+  if (!need_shadow_stack_push_pop_p ())
+    return;
+
+  if (is_zicfiss_p ())
+    {
+      // if zicfiss extension is supported, use hardware instructions
+      emit_insn (gen_sspush (Pmode, gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)));
+    }
+  else
+    {
+      rtx size = GEN_INT (UNITS_PER_WORD);
+      rtx neg_size = GEN_INT (-UNITS_PER_WORD);
+
+      // otherwise shift to software shadow call stack
+      if (Pmode == DImode)
+	emit_insn (gen_shadow_call_stack_push_di (size, neg_size));
+      else if (Pmode == SImode)
+	emit_insn (gen_shadow_call_stack_push_si (size, neg_size));
+    }
+}
+
 /* Expand the "prologue" pattern.  */
 
 void
@@ -10520,8 +10546,8 @@ riscv_expand_prologue (void)
   if (cfun->machine->naked_p)
     return;
 
-  if (need_shadow_stack_push_pop_p ())
-    emit_insn (gen_sspush (Pmode, gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM)));
+  /* Delegate the task of emitting instructions for shadow stack prologue.  */
+  riscv_emit_shadow_stack_prologue ();
 
   /* Prefer multi-push to save-restore libcall.  */
   if (riscv_use_multi_push (frame))
@@ -10745,6 +10771,48 @@ riscv_gen_multi_pop_insn (bool use_popret, unsigned mask,
   rtx dwarf = riscv_adjust_multi_pop_cfi_epilogue (multipop_size);
   RTX_FRAME_RELATED_P (insn) = 1;
   REG_NOTES (insn) = dwarf;
+}
+
+/* Handle the shadow call stack epilogue expand.  */
+
+void
+riscv_emit_shadow_stack_epilogue (int style)
+{
+  // skip in case we don't need shadow stack prologue/epilogue
+  if (!need_shadow_stack_push_pop_p ())
+    return;
+
+  // skip in case of exception handling
+  if (style == EXCEPTION_RETURN || crtl->calls_eh_return)
+    return;
+
+  rtx ra = gen_rtx_REG (Pmode, RETURN_ADDR_REGNUM);
+  rtx t0 = gen_rtx_REG (Pmode, RISCV_PROLOGUE_TEMP_REGNUM);
+  rtx neg_size = GEN_INT (-UNITS_PER_WORD);
+
+  // at this point, the return address on the stack pointer is already
+  // restored to either t0 or ra
+  // if shadow stack is enabled or in case of exception handling
+  // the return address is restored from the normal stack to register t0
+  // otherwise it is restored to ra (ref. see function riscv_for_each_saved_reg)
+  bool stack_return_address_in_t0
+	= BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
+	  && style != SIBCALL_RETURN
+	  && !cfun->machine->interrupt_handler_p;
+
+  // if support for zicfiss available use that
+  if (is_zicfiss_p ())
+    {
+      emit_insn (gen_sspopchk (Pmode, stack_return_address_in_t0 ? t0 : ra));
+    }
+  else
+    {
+      // otherwise shift to software shadow call stack
+      if (Pmode == DImode)
+	emit_insn (gen_shadow_call_stack_pop_di (stack_return_address_in_t0 ? t0 : ra, neg_size));
+      else if (Pmode == SImode)
+	emit_insn (gen_shadow_call_stack_pop_si (stack_return_address_in_t0 ? t0 : ra, neg_size));
+    }
 }
 
 /* Expand an "epilogue", "sibcall_epilogue", or "eh_return_internal" pattern;
@@ -11060,17 +11128,8 @@ riscv_expand_epilogue (int style)
     emit_insn (gen_add3_insn (stack_pointer_rtx, stack_pointer_rtx,
 			      EH_RETURN_STACKADJ_RTX));
 
-  if (need_shadow_stack_push_pop_p ()
-      && !((style == EXCEPTION_RETURN) && crtl->calls_eh_return))
-    {
-      if (BITSET_P (cfun->machine->frame.mask, RETURN_ADDR_REGNUM)
-	  && style != SIBCALL_RETURN
-	  && !cfun->machine->interrupt_handler_p
-	  && !use_multi_pop)
-	emit_insn (gen_sspopchk (Pmode, t0));
-      else
-	emit_insn (gen_sspopchk (Pmode, ra));
-    }
+  /* Delegate the task of emitting the shadow stack epilogue.  */
+  riscv_emit_shadow_stack_epilogue (style);
 
   /* Return from interrupt.  */
   if (cfun->machine->interrupt_handler_p)
@@ -11107,6 +11166,9 @@ bool
 riscv_epilogue_uses (unsigned int regno)
 {
   if (regno == RETURN_ADDR_REGNUM)
+    return true;
+
+  if (regno == GP_REGNUM && sanitize_shadow_stack_p ())
     return true;
 
   if (epilogue_completed && cfun->machine->interrupt_handler_p)
@@ -16043,9 +16105,18 @@ bool is_zicfilp_p ()
   return false;
 }
 
+bool sanitize_shadow_stack_p ()
+{
+  return flag_sanitize & SANITIZE_SHADOW_CALL_STACK;
+}
+
+/* Check if cfi protection is enabled by command line
+   returns true is zicfiss or -fsanitize=shadow-call-stack is enabled
+   AND the return address is saved on the stack.  */
 bool need_shadow_stack_push_pop_p ()
 {
-  return is_zicfiss_p () && riscv_save_return_addr_reg_p ();
+  return (is_zicfiss_p () || sanitize_shadow_stack_p ())
+	  && riscv_save_return_addr_reg_p ();
 }
 
 /* Synthesize OPERANDS[0] = OPERANDS[1] CODE OPERANDS[2].
@@ -17059,6 +17130,9 @@ riscv_memtag_tag_bitsize ()
 #undef TARGET_SHRINK_WRAP_SET_HANDLED_COMPONENTS
 #define TARGET_SHRINK_WRAP_SET_HANDLED_COMPONENTS \
   riscv_set_handled_components
+
+#undef TARGET_HAVE_SHADOW_CALL_STACK
+#define TARGET_HAVE_SHADOW_CALL_STACK true
 
 /* The generic ELF target does not always have TLS support.  */
 #ifdef HAVE_AS_TLS
