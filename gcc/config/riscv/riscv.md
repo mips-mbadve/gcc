@@ -5235,6 +5235,23 @@
   [(set_attr "type" "arith")
    (set_attr "mode" "<MODE>")])
 
+;; Shadow call stack
+
+(define_expand "shadow_call_stack_push_<mode>"
+  [(set (reg:P GP_REGNUM)
+      (plus:P (reg:P GP_REGNUM)
+	(match_operand:P 0 "const_int_operand")))
+   (set (mem:P (plus:P (reg:P GP_REGNUM)
+      (match_operand:P 1 "const_int_operand")))
+	(reg:P RETURN_ADDR_REGNUM))])
+
+(define_expand "shadow_call_stack_pop_<mode>"
+  [(set (match_operand:P 0 "register_operand")
+      (mem:P (plus:P (reg:P GP_REGNUM)
+	(match_operand:P 1 "const_int_operand"))))
+   (set (reg:P GP_REGNUM)
+      (plus:P (reg:P GP_REGNUM) (match_dup 1)))])
+
 ;; Lading pad.
 
 (define_insn "lpad"
